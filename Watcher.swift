@@ -316,13 +316,29 @@ final class Watcher {
                 $0.number == row.number &&
                 (row.title.isEmpty || $0.title.isEmpty || sameTitle($0.title, row.title))
             }) {
-                seenRows.insert(row.number)
-                guard !liveRow.bpm.isEmpty else {
-                    counts.errors += 1
-                    note("\(playlist) #\(row.number): BPM unreadable; skipped")
+                guard !liveRow.bpm.isEmpty || liveRow.importPending else {
+                    unstableRows[row.number, default: 0] += 1
+                    if unstableRows[row.number, default: 0] >= 3 {
+                        seenRows.insert(row.number)
+                        counts.errors += 1
+                        note("\(playlist) #\(row.number): BPM unreadable after three views; skipped")
+                    }
                     continue
                 }
-                if !liveRow.missing.any {
+                seenRows.insert(row.number)
+                // Rekordbox shows a 0% import indicator for some Apple Music
+                // rows whose 0.00 BPM glyph Vision cannot read. That state
+                // has no completed grid to preserve, so analyze both fields.
+                let targetRow: TrackRow
+                if liveRow.bpm.isEmpty && liveRow.importPending {
+                    targetRow = TrackRow(number: liveRow.number, title: liveRow.title,
+                                         bpm: "0.00", key: liveRow.key, y: liveRow.y,
+                                         missing: MissingFields(bpm: true, key: liveRow.missing.key),
+                                         importPending: true)
+                } else {
+                    targetRow = liveRow
+                }
+                if !targetRow.missing.any {
                     if batchNumbers.contains(row.number) {
                         counts.analyzed += 1
                         note("Verified \(playlist) #\(row.number): BPM \(liveRow.bpm), key \(liveRow.key)")
@@ -337,7 +353,7 @@ final class Watcher {
                     }
                     do {
                         note("Processing \(playlist) #\(row.number)/\(expectedCount ?? 0): \(liveRow.title)")
-                        let result = try await process(liveRow, playlist: playlist)
+                        let result = try await process(targetRow, playlist: playlist)
                         resetToTop = true
                         counts.analyzed += 1
                         consecutiveErrors = 0
@@ -537,7 +553,12 @@ final class Watcher {
         let (readyCapture, readyWords) = try await snapshot()
         try requireOpenPlaylist(playlist, words: readyWords, size: readyCapture.frame.size)
         let readyLayout = try TableLayout.detect(readyWords, size: readyCapture.frame.size)
-        guard let readyRow = readyLayout.rows(readyWords).first(where: { $0.number == row.number && sameTitle($0.title, row.title) && $0.missing == row.missing }) else {
+        guard let readyRow = readyLayout.rows(readyWords).first(where: {
+            $0.number == row.number && sameTitle($0.title, row.title) &&
+            ($0.missing == row.missing ||
+             (row.importPending && $0.importPending && $0.bpm.isEmpty && row.missing.bpm &&
+              $0.missing.key == row.missing.key))
+        }) else {
             throw WatcherError.verificationFailed("stable row for \(row.title)")
         }
         try control.click(windowFrame: readyCapture.frame,
@@ -552,6 +573,7 @@ final class Watcher {
         var postAnalysisIdle = 0
         var idleChecks = 0
         var absentChecks = 0
+        var waitedForImport = false
         for tick in 0..<240 {
             if paused { throw WatcherError.actionUnavailable("scan paused") }
             try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -576,6 +598,24 @@ final class Watcher {
             if !current.missing.any,
                let bpm = Double(current.bpm.replacingOccurrences(of: ",", with: ".")), bpm > 0 {
                 return current
+            }
+            // A streaming row can stay at 0% after Rekordbox accepts Analyze
+            // Track. Keep waiting for that import instead of exhausting both
+            // analysis attempts before the audio is available.
+            if current.importPending && analysisAttempts >= 2 {
+                if tick < 180 {
+                    waitedForImport = true
+                    postAnalysisIdle = 0
+                    continue
+                }
+                throw WatcherError.verificationFailed("Apple Music import for \(row.title) remained pending")
+            }
+            if waitedForImport && !current.importPending {
+                analysisStarted = false
+                analysisAttempts = 0
+                postAnalysisIdle = 0
+                idleChecks = 0
+                waitedForImport = false
             }
             if analysisStarted {
                 if control.analysisBusy() { postAnalysisIdle = 0; continue }

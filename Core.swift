@@ -280,6 +280,11 @@ final class WindowReader {
             words += recognizeTrackTitles(captured.image, size: size, layout: layout, existing: words)
             words += recognizeTrackNumbers(captured.image, size: size, layout: layout, existing: words)
             words += recognizeBPMValues(captured.image, size: size, layout: layout, existing: words)
+            for row in layout.rows(words) where row.bpm.isEmpty {
+                if let bpm = recognizeBPMCell(captured.image, size: size, layout: layout, row: row) {
+                    words.append(bpm)
+                }
+            }
             for row in layout.rows(words) where row.key.isEmpty {
                 if keyCellHasGlyph(captured.image, size: size, layout: layout, row: row) {
                     words.append(Word(text: "?", rect: CGRect(x: layout.keyX + 8, y: row.y - 8,
@@ -288,6 +293,30 @@ final class WindowReader {
             }
         }
         return words
+    }
+
+    private func recognizeBPMCell(_ image: CGImage, size: CGSize, layout: TableLayout,
+                                  row: TrackRow) -> Word? {
+        let scaleX = CGFloat(image.width) / size.width
+        let scaleY = CGFloat(image.height) / size.height
+        let area = CGRect(x: layout.bpmX * scaleX,
+                          y: (row.y - 8) * scaleY,
+                          width: (layout.bpmEndX - layout.bpmX - 2) * scaleX,
+                          height: 16 * scaleY).integral
+        guard area.width > 0, area.height > 0, let crop = image.cropping(to: area) else { return nil }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        request.recognitionLanguages = ["en-US"]
+        guard (try? VNImageRequestHandler(cgImage: crop).perform([request])) != nil,
+              let result = request.results?.first,
+              let candidate = result.topCandidates(1).first else { return nil }
+        let value = candidate.string.replacingOccurrences(of: "O", with: "0")
+            .replacingOccurrences(of: "o", with: "0")
+        guard value.range(of: "^[0-9]+(?:[.,][0-9]+)?", options: .regularExpression) != nil else { return nil }
+        return Word(text: value,
+                    rect: CGRect(x: layout.bpmX + 2, y: row.y - 6, width: 42, height: 12),
+                    confidence: candidate.confidence)
     }
 
     private func recognizeBPMValues(_ image: CGImage, size: CGSize, layout: TableLayout,

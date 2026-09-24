@@ -16,6 +16,8 @@ Open `Rekordbox BPM Key Watcher.app`. Its `♪ BPM` menu has **Grant permissions
 
 The menu bar label changes to **♪ BPM ⋯** while a scan runs, **♪ BPM ✓** only when every track in the open playlist has been verified with BPM and key, and **♪ BPM !** when analysis stops early or reports an error. Open the menu for the current track, elapsed time, and verified count. A track counts as analyzed only after the values appear in Rekordbox.
 
+To check a run, open the menu and compare **verified/total** with the playlist track count. Success means the counts match, errors are zero, and the label is **♪ BPM ✓**. In Rekordbox, each row should show a BPM above `0.00` and a nonblank Key. **♪ BPM ⋯** means the scan is still running. **♪ BPM !**, a `0%` import indicator, `0.00` BPM, or a blank Key means at least one result remains unresolved; the recent errors in the menu identify rows the watcher could not finish.
+
 Open the Apple Music playlist you want analyzed, then choose **Analyze open playlist while away** before stepping away. Nothing scans at launch or on a timer. The watcher stays on that playlist. It scrolls its track table and, if needed, sorts by track number so it can verify every row; it never opens another playlist. The table remains sorted by track number afterward. If Rekordbox loses focus, the watcher stops. **Stop analysis** also ends the session. Do not use Rekordbox during an away session. The app does not start automatically at Mac login.
 
 Keep the Mac unlocked and Rekordbox visible for the whole session. This tool drives Rekordbox's interface, so analysis cannot continue at the macOS login screen. If macOS locks, the menu shows **♪ BPM !** and an explicit lock error. Unlock and start a new session; completed tracks are skipped.
@@ -40,7 +42,7 @@ swiftc -swift-version 5 Core.swift Tests/CoreTests.swift -o /tmp/rekordbox-watch
 /tmp/rekordbox-watcher-core-tests
 ```
 
-The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The observed interface was Rekordbox 7.2.18 on macOS 26.6.2. A live scan identified all 31 rows in one already completed Apple Music playlist and skipped them with zero errors. A second live scan read all 35 rows of a new Apple Music playlist and confirmed BPM and key written for its first tracks. Treat this release as experimental and check its results in Rekordbox before a set.
+The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The observed interface was Rekordbox 7.2.18 on macOS 26.6.2. A live scan identified all 31 rows in one already completed Apple Music playlist and skipped them with zero errors. In a 35-track playlist, 32 rows ultimately showed BPM and key after automated analysis or targeted retries; three rows remained unresolved, including streams that stayed at `0%`. Treat this release as experimental and check its results in Rekordbox before a set.
 
 Rekordbox has no documented background analysis API for Apple Music tracks, so its analysis controls briefly appear while the away session runs. Menu placement and OCR may need adjustment after a Rekordbox UI update. Complete coverage of a playlist requires each Apple Music stream to be available to Rekordbox for analysis. Tracks that Rekordbox cannot access or has locked against analysis cannot be filled by this tool.
 
