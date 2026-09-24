@@ -1,0 +1,9 @@
+.DS_Store
+.build/
+.core-tests
+.compile-check
+dist/
+*.app/
+*.zip
+core-tests
+RekordboxBPMKeyWatcher

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>Rekordbox BPM Key Watcher</string>
+  <key>CFBundleDisplayName</key><string>Rekordbox BPM Key Watcher</string>
+  <key>CFBundleIdentifier</key><string>com.andrewjunior.rekordbox-bpm-key-watcher</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>CFBundleExecutable</key><string>RekordboxBPMKeyWatcher</string>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSScreenCaptureDescription</key><string>Read Rekordbox playlist rows to identify tracks missing BPM and key.</string>
+</dict></plist>
