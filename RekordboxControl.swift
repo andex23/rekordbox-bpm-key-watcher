@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import os
 
 struct AnalysisPreferences: Codable {
     let bpm: Bool
@@ -11,6 +12,7 @@ struct AnalysisPreferences: Codable {
 }
 
 final class RekordboxControl {
+    private let logger = Logger(subsystem: "com.andrewjunior.rekordbox-bpm-key-watcher", category: "control")
     private let bundleIdentifier = "com.pioneerdj.rekordboxdj"
     private var app: NSRunningApplication? {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first
@@ -23,9 +25,25 @@ final class RekordboxControl {
     var isRunning: Bool { app != nil }
     var isActive: Bool { app?.isActive == true }
 
-    func activate() throws {
+    func activate() async throws {
         guard let app else { throw WatcherError.noRekordbox }
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.loginwindow" {
+            throw WatcherError.macLocked
+        }
+        let applicationElement = AXUIElementCreateApplication(app.processIdentifier)
+        let axFrontmostResult = AXUIElementSetAttributeValue(applicationElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        logger.info("Activate: before active=\(app.isActive), AX frontmost result=\(axFrontmostResult.rawValue), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none", privacy: .public)")
+        if let mainWindow = value(applicationElement, kAXMainWindowAttribute as CFString) {
+            let window = mainWindow as! AXUIElement
+            let axRaiseResult = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            logger.info("Activate: AX raise result=\(axRaiseResult.rawValue)")
+        }
         app.activate()
+        for _ in 0..<30 where !app.isActive {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        logger.info("Activate: after active=\(app.isActive), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "none", privacy: .public)")
+        guard app.isActive else { throw WatcherError.actionUnavailable("bringing Rekordbox to the front; keep the Mac unlocked and Rekordbox visible") }
     }
 
     private func value(_ element: AXUIElement, _ attribute: CFString) -> AnyObject? {
@@ -162,13 +180,15 @@ final class RekordboxControl {
         try setToggle("Set CUE during analysis", to: saved.cue, in: window)
     }
 
-    func click(windowFrame: CGRect, local: CGPoint) throws {
+    func click(windowFrame: CGRect, local: CGPoint, flags: CGEventFlags = []) throws {
         guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
         let point = CGPoint(x: windowFrame.minX + local.x, y: windowFrame.minY + local.y)
         guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
               let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
             throw WatcherError.actionUnavailable("mouse click")
         }
+        down.flags = flags
+        up.flags = flags
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }

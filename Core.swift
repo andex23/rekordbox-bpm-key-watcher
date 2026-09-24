@@ -18,6 +18,7 @@ struct CapturedWindow {
 enum WatcherError: LocalizedError {
     case noRekordbox
     case windowHidden
+    case macLocked
     case missingLayout(String)
     case actionUnavailable(String)
     case verificationFailed(String)
@@ -26,6 +27,7 @@ enum WatcherError: LocalizedError {
         switch self {
         case .noRekordbox: return "Rekordbox is not running."
         case .windowHidden: return "Rekordbox must be visible to scan playlists."
+        case .macLocked: return "Mac appears locked. Unlock it, keep Rekordbox visible, and start the scan again."
         case .missingLayout(let value): return "Could not identify \(value) in the Rekordbox window."
         case .actionUnavailable(let value): return "Rekordbox did not enable \(value)."
         case .verificationFailed(let value): return "Could not verify \(value)."
@@ -244,19 +246,31 @@ final class WindowReader {
     }
 
     func recognize(_ captured: CapturedWindow) throws -> [Word] {
+        // Vision can choose a 180-degree text orientation for Rekordbox's
+        // full performance window and ignore the browser table altogether.
+        // The playlist and track table live in the lower half; recognizing
+        // that region alone keeps Vision oriented to the rows we need.
+        let image = captured.image
+        let cropY = Int(Double(image.height) * 0.5)
+        guard let browserImage = image.cropping(to: CGRect(x: 0, y: cropY,
+                                                            width: image.width, height: image.height - cropY)) else {
+            throw WatcherError.windowHidden
+        }
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         request.recognitionLanguages = ["en-US"]
-        try VNImageRequestHandler(cgImage: captured.image).perform([request])
+        try VNImageRequestHandler(cgImage: browserImage).perform([request])
         let size = captured.frame.size
+        let scaleX = size.width / CGFloat(image.width)
+        let scaleY = size.height / CGFloat(image.height)
         var words: [Word] = (request.results ?? []).compactMap { result in
             guard let match = result.topCandidates(1).first else { return nil }
             let box = result.boundingBox
-            let rect = CGRect(x: box.minX * size.width,
-                              y: (1 - box.maxY) * size.height,
-                              width: box.width * size.width,
-                              height: box.height * size.height)
+            let rect = CGRect(x: box.minX * CGFloat(browserImage.width) * scaleX,
+                              y: (CGFloat(cropY) + (1 - box.maxY) * CGFloat(browserImage.height)) * scaleY,
+                              width: box.width * CGFloat(browserImage.width) * scaleX,
+                              height: box.height * CGFloat(browserImage.height) * scaleY)
             return Word(text: match.string, rect: rect, confidence: match.confidence)
         }
         // Vision occasionally omits a one-character key (for example F) in a

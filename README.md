@@ -14,9 +14,13 @@ Grant **Accessibility** and **Screen & System Audio Recording** to the installed
 
 Open `Rekordbox BPM Key Watcher.app`. Its `♪ BPM` menu has **Grant permissions…**, **Analyze open playlist while away**, **Stop analysis**, a progress summary, and recent errors.
 
+The menu bar label changes to **♪ BPM ⋯** while a scan runs, **♪ BPM ✓** only when every track in the open playlist has been verified with BPM and key, and **♪ BPM !** when analysis stops early or reports an error. Open the menu for the current track, elapsed time, and verified count. A track counts as analyzed only after the values appear in Rekordbox.
+
 Open the Apple Music playlist you want analyzed, then choose **Analyze open playlist while away** before stepping away. Nothing scans at launch or on a timer. The watcher stays on that playlist. It scrolls its track table and, if needed, sorts by track number so it can verify every row; it never opens another playlist. The table remains sorted by track number afterward. If Rekordbox loses focus, the watcher stops. **Stop analysis** also ends the session. Do not use Rekordbox during an away session. The app does not start automatically at Mac login.
 
-For a new set where every track needs the same fields, the watcher first reads every row and confirms the playlist track count, then selects the entire playlist and runs Rekordbox's **Import To Collection** and **Analyze Track** once each. It waits for that batch to finish and checks every resulting BPM and key. If the playlist contains a mix of completed and missing fields, it processes only the missing tracks individually so existing values and grids remain safe. Rekordbox still needs time to analyze each audio stream internally, but the watcher no longer opens the menus once per track for a uniform set.
+Keep the Mac unlocked and Rekordbox visible for the whole session. This tool drives Rekordbox's interface, so analysis cannot continue at the macOS login screen. If macOS locks, the menu shows **♪ BPM !** and an explicit lock error. Unlock and start a new session; completed tracks are skipped.
+
+The watcher reads the playlist, skips tracks with both values already filled, and processes the remaining tracks automatically. On the Apple Music playlist tested with Rekordbox 7.2.18, **Analyze Track** was disabled for a multi-track selection and enabled for a single track. The watcher therefore invokes Rekordbox analysis separately for each missing track and verifies the result before counting it. Processing time depends on Rekordbox downloading and analyzing each stream; the menu shows the current track and elapsed time so a stalled import is visible.
 
 The tool changes Rekordbox's track-analysis toggles while processing a track. It saves the previous BPM/Grid, Key, Phrase, Vocal, Auto Analysis, and Cue Analysis settings, then restores them after each track. If interrupted, it tries to restore them when the next away session starts.
 
@@ -36,7 +40,7 @@ swiftc -swift-version 5 Core.swift Tests/CoreTests.swift -o /tmp/rekordbox-watch
 /tmp/rekordbox-watcher-core-tests
 ```
 
-The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The observed interface was Rekordbox 7.2.18 on macOS 26.6.2. A live scan identified all 31 rows in one already completed Apple Music playlist and skipped them with zero errors. The one-command batch path has **not** yet been live-tested on a fresh playlist where every track is blank. Treat this release as experimental and check its results in Rekordbox before a set.
+The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The observed interface was Rekordbox 7.2.18 on macOS 26.6.2. A live scan identified all 31 rows in one already completed Apple Music playlist and skipped them with zero errors. A second live scan read all 35 rows of a new Apple Music playlist and confirmed BPM and key written for its first tracks. Treat this release as experimental and check its results in Rekordbox before a set.
 
 Rekordbox has no documented background analysis API for Apple Music tracks, so its analysis controls briefly appear while the away session runs. Menu placement and OCR may need adjustment after a Rekordbox UI update. Complete coverage of a playlist requires each Apple Music stream to be available to Rekordbox for analysis. Tracks that Rekordbox cannot access or has locked against analysis cannot be filled by this tool.
 

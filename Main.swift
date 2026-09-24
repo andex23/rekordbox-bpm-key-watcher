@@ -31,6 +31,10 @@ final class MenuApp: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenu() {
+        let counts = watcher.counts
+        let verified = counts.analyzed + counts.skipped
+        let complete = counts.total > 0 && verified == counts.total && counts.errors == 0
+        statusItem.button?.title = watcher.scanning ? "♪ BPM ⋯" : (complete ? "♪ BPM ✓" : (counts.errors > 0 || counts.total > 0 ? "♪ BPM !" : "♪ BPM"))
         let menu = NSMenu()
         let headline: String
         if !AXIsProcessTrusted() {
@@ -43,8 +47,7 @@ final class MenuApp: NSObject, NSApplicationDelegate {
         let status = NSMenuItem(title: headline, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
-        let counts = watcher.counts
-        let countItem = NSMenuItem(title: "\(counts.playlists) playlists · \(counts.analyzed) analyzed · \(counts.skipped) skipped · \(counts.errors) errors", action: nil, keyEquivalent: "")
+        let countItem = NSMenuItem(title: "\(verified)/\(counts.total) verified · \(counts.analyzed) analyzed · \(counts.skipped) already filled · \(counts.errors) errors", action: nil, keyEquivalent: "")
         countItem.isEnabled = false
         menu.addItem(countItem)
         menu.addItem(.separator())
