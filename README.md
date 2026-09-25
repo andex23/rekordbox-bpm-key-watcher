@@ -12,15 +12,15 @@ Grant **Accessibility** and **Screen & System Audio Recording** to the installed
 
 ## Run
 
-Open `Rekordbox BPM Key Watcher.app`. Its `♪ BPM` menu has **Grant permissions…**, **Analyze open playlist while away**, **Stop analysis**, a progress summary, and recent errors.
+Open `Rekordbox BPM Key Watcher.app`. Its vinyl-platter **BPM** menu bar item has **Grant permissions…**, **Analyze open playlist while away**, **Stop analysis**, a progress summary, and recent errors. The Finder app icon uses the same original platter design.
 
-The menu bar label changes to **♪ BPM ⋯** while a scan runs, **♪ BPM ✓** only when every track in the open playlist has been verified with BPM and key, and **♪ BPM !** when analysis stops early or reports an error. Open the menu for the current track, elapsed time, and verified count. A track counts as analyzed only after the values appear in Rekordbox.
+The menu bar label changes to **BPM ⋯** while a scan runs, **BPM ✓** only when every track in the open playlist has been verified with BPM and key, and **BPM !** when analysis stops early or reports an error. Open the menu for the current track, elapsed time, and verified count. A track counts as analyzed only after the values appear in Rekordbox.
 
-To check a run, open the menu and compare **verified/total** with the playlist track count. Success means the counts match, errors are zero, and the label is **♪ BPM ✓**. In Rekordbox, each row should show a BPM above `0.00` and a nonblank Key. **♪ BPM ⋯** means the scan is still running. **♪ BPM !**, a `0%` import indicator, `0.00` BPM, or a blank Key means at least one result remains unresolved; the recent errors in the menu identify rows the watcher could not finish.
+To check a run, open the menu and compare **verified/total** with the playlist track count. Success means the counts match, errors are zero, and the label is **BPM ✓**. In Rekordbox, each row should show a BPM above `0.00` and a nonblank Key. **BPM ⋯** means the scan is still running. **BPM !**, a `0%` import indicator, `0.00` BPM, or a blank Key means at least one result remains unresolved; the recent errors in the menu identify rows the watcher could not finish.
 
 Open the Apple Music playlist you want analyzed, then choose **Analyze open playlist while away** before stepping away. Nothing scans at launch or on a timer. The watcher stays on that playlist. It scrolls its track table and, if needed, sorts by track number so it can verify every row; it never opens another playlist. The table remains sorted by track number afterward. If Rekordbox loses focus, the watcher stops. **Stop analysis** also ends the session. Do not use Rekordbox during an away session. The app does not start automatically at Mac login.
 
-Keep the Mac unlocked and Rekordbox visible for the whole session. This tool drives Rekordbox's interface, so analysis cannot continue at the macOS login screen. If macOS locks, the menu shows **♪ BPM !** and an explicit lock error. Unlock and start a new session; completed tracks are skipped.
+Keep the Mac unlocked and Rekordbox visible for the whole session. This tool drives Rekordbox's interface, so analysis cannot continue at the macOS login screen. If macOS locks, the menu shows **BPM !** and an explicit lock error. Unlock and start a new session; completed tracks are skipped.
 
 The watcher reads the playlist, skips tracks with both values already filled, and processes the remaining tracks automatically. On the Apple Music playlist tested with Rekordbox 7.2.18, **Analyze Track** was disabled for a multi-track selection and enabled for a single track. The watcher therefore invokes Rekordbox analysis separately for each missing track and verifies the result before counting it. Processing time depends on Rekordbox downloading and analyzing each stream; the menu shows the current track and elapsed time so a stalled import is visible.
 

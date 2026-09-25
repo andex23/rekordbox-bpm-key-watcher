@@ -12,7 +12,9 @@ final class MenuApp: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("Launched; Accessibility=\(AXIsProcessTrusted()), ScreenCapture=\(CGPreflightScreenCaptureAccess())")
         NSApp.setActivationPolicy(.accessory)
-        statusItem.button?.title = "♪ BPM"
+        statusItem.button?.image = Self.menuBarIcon()
+        statusItem.button?.imagePosition = .imageLeading
+        statusItem.button?.title = " BPM"
         watcher.onChange = { [weak self] in self?.updateMenu() }
         updateMenu()
         if CommandLine.arguments.contains("--scan-open-playlist") {
@@ -34,7 +36,7 @@ final class MenuApp: NSObject, NSApplicationDelegate {
         let counts = watcher.counts
         let verified = counts.analyzed + counts.skipped
         let complete = counts.total > 0 && verified == counts.total && counts.errors == 0
-        statusItem.button?.title = watcher.scanning ? "♪ BPM ⋯" : (complete ? "♪ BPM ✓" : (counts.errors > 0 || counts.total > 0 ? "♪ BPM !" : "♪ BPM"))
+        statusItem.button?.title = watcher.scanning ? " BPM ⋯" : (complete ? " BPM ✓" : (counts.errors > 0 || counts.total > 0 ? " BPM !" : " BPM"))
         let menu = NSMenu()
         let headline: String
         if !AXIsProcessTrusted() {
@@ -87,6 +89,28 @@ final class MenuApp: NSObject, NSApplicationDelegate {
         updateMenu()
     }
     @objc private func quitApp() { NSApp.terminate(nil) }
+
+    private static func menuBarIcon() -> NSImage {
+        let icon = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setStroke()
+            NSColor.black.setFill()
+            let platter = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14))
+            platter.lineWidth = 1.8
+            platter.stroke()
+            NSBezierPath(ovalIn: NSRect(x: 7.3, y: 7.3, width: 3.4, height: 3.4)).fill()
+            let beat = NSBezierPath()
+            beat.move(to: NSPoint(x: 13.8, y: 12.8))
+            beat.line(to: NSPoint(x: 15.9, y: 12.8))
+            beat.line(to: NSPoint(x: 16.5, y: 14.4))
+            beat.lineWidth = 1.8
+            beat.lineCapStyle = .round
+            beat.lineJoinStyle = .round
+            beat.stroke()
+            return true
+        }
+        icon.isTemplate = true
+        return icon
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         watcher.shutdown()
