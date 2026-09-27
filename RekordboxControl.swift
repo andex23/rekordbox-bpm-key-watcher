@@ -198,7 +198,7 @@ final class RekordboxControl {
             throw WatcherError.actionUnavailable("mouse click")
         }
         down.flags = flags
-        up.flags = flags
+        up.flags = []
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }
@@ -211,7 +211,7 @@ final class RekordboxControl {
             throw WatcherError.actionUnavailable("Select All")
         }
         down.flags = .maskCommand
-        up.flags = .maskCommand
+        up.flags = []
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }
@@ -233,6 +233,7 @@ final class RekordboxControl {
         guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0) else {
             throw WatcherError.actionUnavailable("scroll")
         }
+        event.flags = []
         event.location = point
         event.post(tap: .cghidEventTap)
     }
@@ -247,9 +248,13 @@ final class RekordboxControl {
         guard let trackMenu = named("Track", in: menuBar) else { throw WatcherError.missingLayout("Track menu") }
         try press(trackMenu, label: "Track menu")
         Thread.sleep(forTimeInterval: 0.08)
-        guard let item = named(action, in: trackMenu) else { throw WatcherError.missingLayout(action) }
-        let enabled = (value(item, kAXEnabledAttribute as CFString) as? NSNumber)?.boolValue ?? false
-        guard enabled else {
+        let plural = action == "Analyze Track" ? "Analyze Tracks" : (action == "Analyze Key" ? "Analyze Keys" : action)
+        let candidates = Array(Set([action, plural])).compactMap { named($0, in: trackMenu) }
+        guard !candidates.isEmpty else {
+            _ = AXUIElementPerformAction(trackMenu, kAXCancelAction as CFString)
+            throw WatcherError.missingLayout(action)
+        }
+        guard let item = candidates.first(where: { (value($0, kAXEnabledAttribute as CFString) as? NSNumber)?.boolValue == true }) else {
             _ = AXUIElementPerformAction(trackMenu, kAXCancelAction as CFString)
             throw WatcherError.actionUnavailable(action)
         }
@@ -264,13 +269,18 @@ final class RekordboxControl {
         } != nil
     }
 
-    func analysisBusy() -> Bool {
-        guard let root else { return false }
-        return find(root) { [self] element in
+    var analysisProgress: String? {
+        guard let root else { return nil }
+        var progress: String?
+        _ = find(root) { [self] element in
             let label = text(element, kAXValueAttribute as CFString) ?? text(element, kAXTitleAttribute as CFString) ?? ""
-            return label.contains("Analyzing:") || label.contains("Importing ")
-        } != nil
+            if label.contains("Analyzing:") || label.contains("Importing ") { progress = label; return true }
+            return false
+        }
+        return progress
     }
+
+    func analysisBusy() -> Bool { analysisProgress != nil }
 
     func confirmAnalysisIfNeeded() throws {
         try checkInteraction()

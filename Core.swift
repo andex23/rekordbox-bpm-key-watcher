@@ -135,7 +135,14 @@ struct TableLayout {
         // invent one bad number elsewhere in the viewport; that must not hide
         // a real row at the top or bottom of the table.
         if !steps.isEmpty {
-            let pitch = steps.sorted()[steps.count / 2]
+            let titlePositions = words.filter {
+                $0.y > headerY + 8 && $0.y < bottomY - 6 && $0.x >= titleX && $0.x < artistX
+            }.map(\.y).sorted()
+            let titleSteps = zip(titlePositions, titlePositions.dropFirst()).map { $1 - $0 }.filter { $0 >= 10 && $0 <= 20 }
+            // Tiny numeric glyph boxes vary in height. Use the repeated title
+            // baselines to avoid accumulating that error across twelve rows.
+            let measuredSteps = titleSteps.count >= 4 ? titleSteps : steps
+            let pitch = measuredSteps.sorted()[measuredSteps.count / 2]
             let supported = ordered.filter { anchor in
                 ordered.contains { neighbor in
                     let difference = neighbor.0 - anchor.0

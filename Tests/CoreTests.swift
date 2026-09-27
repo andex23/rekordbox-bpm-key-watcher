@@ -118,6 +118,20 @@ struct CoreTests {
         assert(!PlaylistList.isAppleMusicSearch(searchWords.filter { $0.text != "Apple Music" } +
             [word("Apple Music (35 Tracks)", 270, 505)], size: searchSize))
         assert(!PlaylistList.isAppleMusicSearch([], size: searchSize))
+        // Real failure: dim green numbers 1-8 were omitted, and glyph-box
+        // heights made 9-12 appear closer together than actual row spacing.
+        let driftLayout = TableLayout(numberX: 330, titleX: 665, artistX: 790,
+            keyX: 1050, keyEndX: 1175, bpmX: 1320, bpmEndX: 1395, headerY: 535, bottomY: 732)
+        func centered(_ text: String, _ x: CGFloat, _ y: CGFloat) -> Word {
+            Word(text: text, rect: CGRect(x: x - 4, y: y - 4, width: 8, height: 8), confidence: 1)
+        }
+        var driftWords = (1...12).map { centered("Song \($0)", 700, 550 + CGFloat($0 - 1) * 15.1) }
+        driftWords += [centered("9", 330, 670.65), centered("10", 330, 684.62),
+                       centered("11", 330, 700.24), centered("12", 330, 713.39)]
+        let driftRows = driftLayout.rows(driftWords)
+        assert(driftRows.first(where: { $0.number == 1 })?.title == "Song 1")
+        assert(driftRows.first(where: { $0.number == 2 })?.title == "Song 2")
+        assert(driftRows.first(where: { $0.number == 3 })?.title == "Song 3")
         print("CoreTests passed")
     }
 }

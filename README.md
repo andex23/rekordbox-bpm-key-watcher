@@ -88,12 +88,17 @@ Full playlist analysis remains unverified pending an open playlist.
 
 The widget and Details **Analyze playlist** button always analyze the currently
 open playlist. Only the explicit saved-session menu and targeted retry controls
-require the saved playlist. Normal analysis begins with visible tracks instead
-of first reading every row. **Check playlist** still reads the entire list.
+require the saved playlist. Normal analysis first reads the playlist to group contiguous unfinished tracks
+with matching missing fields. Completed tracks split those groups and are excluded.
+All eligible groups are submitted through Rekordbox's native analysis command
+before waiting for the queue; its reported remaining-track count is shown. A
+restart waits for existing analysis instead of submitting duplicate work. Then every
+row is checked again; remaining failures are handled individually. **Check playlist** still reads the entire list.
 The reader retries a tighter browser crop when deck graphics cause Vision to
 miss the table. Scrolling to the top now checks actual row progress instead of
 stopping after 20 scrolls. Mouse movement alone no longer pauses analysis;
-clicks, keyboard input and scrolling still do. Green played-track key text is
+clicks, keyboard input and scrolling pause active UI control. They do not pause
+the passive wait after Rekordbox has accepted an analysis queue. Green played-track key text is
 recognized as present even if its letter is missed by OCR.
 
 Live verification on 2026-09-27: Private-School Piano was read at 156/156 rows.
@@ -112,3 +117,25 @@ Read-only inspection of the installed Rekordbox bundle found the native Analyze 
 On 2026-09-27 at 20:49 WAT, the native-command path changed track 13, Amantombazane, from 0.00 BPM and blank key to 113.00 BPM and Am. Preferences opened once before that run to restore the previous version's pending settings; they did not open while processing tracks 13 and 14. Track 14, Ama hem hem, subsequently changed from blank fields to 113.00 BPM and B (the key was independently checked in the captured playlist). This is still visible UI automation, not an invisible background service.
 
 A fresh launch at 20:54 WAT performed no Preferences recovery or settings changes. It analyzed track 15, uMoya 2.0, from 0.00 BPM and blank key to 113.00 BPM and Bm at 20:55 WAT, with one analyzed, fourteen existing complete tracks skipped, and zero errors. CoreTests, SessionTests, NativeAnalysisTests and the final signed build passed. This remains a partial playlist verification; all 156 tracks have not been completed. Partial runs now explicitly report that the playlist is incomplete.
+
+### Full-playlist completion repair (under live verification)
+
+Normal scans now use batches without the old experimental flag. Batch selection
+is checked against Rekordbox's selected-track count, and no Preferences changes
+are used. Selection and scrolling release modifier flags explicitly. The scanner
+also handles either direction of the track-number sort before requiring row 1.
+A captured failure revealed that variable-height tiny number glyphs caused the
+row-spacing estimate to drift, incorrectly assigning song 2 to row 1. Row spacing
+now uses repeated title baselines when available. A regression test and replay of
+the failing capture both identify the first three tracks correctly.
+
+Full-playlist completion is being verified on Private-School Piano (156 tracks).
+Do not treat the earlier single-track tests as whole-playlist completion.
+
+Live batch evidence on 2026-09-27: Rekordbox accepted 46 previously missing
+tracks, and a subsequent complete preflight verified BPM/key populated for rows
+1–63. A 93-track selection was rejected, so batches are now capped at 32, with
+bounded retries and recursive splitting of disabled selections. Rekordbox
+accepted the remaining groups of 32, 32 and 29 at 21:25–21:26 WAT. Its native
+remaining-track count then decreased from 93 while the watcher waited without
+controlling the UI. Final all-row verification is still required.

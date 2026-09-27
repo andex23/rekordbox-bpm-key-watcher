@@ -38,6 +38,7 @@ final class Watcher {
     private var configuredFields: MissingFields?
     private var retryIDs: Set<String>?
     private var expectedPlaylist: String?
+    private var passiveAnalysisWait = false
     private var inputMonitor: Any?
 
     init() {
@@ -267,6 +268,7 @@ final class Watcher {
             }
             try await control.activate()
             beginInputMonitoring()
+            try await waitForNativeAnalysis()
             let (openingCapture, openingWords) = try await snapshot()
             guard let name = activePlaylistName(openingWords, size: openingCapture.frame.size) else {
                 throw WatcherError.missingLayout("the currently open playlist; select an Apple Music playlist before starting")
@@ -349,15 +351,9 @@ final class Watcher {
         var (captured, words) = try await snapshot()
         try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
         var layout = try TableLayout.detect(words, size: captured.frame.size)
-        for _ in 0..<20 {
-            try control.scroll(windowFrame: captured.frame,
-                               local: CGPoint(x: layout.titleX + 90, y: layout.headerY + 90), lines: 7)
-            try await Task.sleep(nanoseconds: 300_000_000)
-            (captured, words) = try await snapshot()
-            try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
-            layout = try TableLayout.detect(words, size: captured.frame.size)
-            if hasLeadingRows(words, layout: layout, playlist: playlist) { break }
-        }
+        try? await scrollToTop(playlist)
+        (captured, words) = try await snapshot()
+        layout = try TableLayout.detect(words, size: captured.frame.size)
         // Rekordbox keeps the user's table sort between playlists. A playlist
         // sorted by Artist or BPM does not expose row 1 at its top, so put the
         // open table in track-number order before reading or selecting it.
@@ -366,7 +362,7 @@ final class Watcher {
                 try control.click(windowFrame: captured.frame,
                                   local: CGPoint(x: layout.numberX, y: layout.headerY))
                 try await Task.sleep(nanoseconds: 300_000_000)
-                try await scrollToTop(playlist)
+                try? await scrollToTop(playlist)
                 (captured, words) = try await snapshot()
                 try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
                 layout = try TableLayout.detect(words, size: captured.frame.size)
@@ -402,12 +398,12 @@ final class Watcher {
         session?.total = counts.total
         onChange?()
         var batchNumbers = Set<Int>()
-        let uniform: (MissingFields, Set<Int>)?
-        let needsFullPreflight = preflightOnly || CommandLine.arguments.contains("--preflight-only") || CommandLine.arguments.contains("--experimental-batch")
+        let batches: [(MissingFields, Set<Int>)]
+        let needsFullPreflight = retryIDs == nil || preflightOnly || CommandLine.arguments.contains("--preflight-only")
         if needsFullPreflight, let expectedCount, expectedCount > 0 {
-            uniform = try await uniformMissingFields(playlist: playlist, expectedCount: expectedCount)
+            batches = try await uniformMissingFields(playlist: playlist, expectedCount: expectedCount)
         } else {
-            uniform = nil
+            batches = []
         }
         if preflightOnly || CommandLine.arguments.contains("--preflight-only") {
             counts.skipped = session?.tracks.filter { $0.phase == .complete }.count ?? 0
@@ -415,19 +411,19 @@ final class Watcher {
             note("Preflight finished for \(playlist)")
             return
         }
-        if CommandLine.arguments.contains("--experimental-batch"),
-           let expectedCount, expectedCount > 1,
-           let (missing, numbers) = uniform {
+        if retryIDs == nil, let expectedCount, expectedCount > 1 {
+          for (missing, numbers) in batches {
             note("Importing and analyzing \(numbers.count) tracks together")
             do {
-                try await analyzeBatch(playlist: playlist, numbers: numbers, count: expectedCount, missing: missing)
-                batchNumbers = numbers
+                let submitted = try await submitBatchGroups(playlist: playlist, numbers: numbers, count: expectedCount, missing: missing)
+                batchNumbers.formUnion(submitted)
             } catch {
                 guard control.isRunning, control.isActive, !paused else { throw error }
-                counts.errors += 1
-                note("Batch analysis did not finish: \(error.localizedDescription). Checking tracks individually")
+                note("Batch could not be verified: \(error.localizedDescription). Checking tracks individually")
             }
+          }
         }
+        try await waitForNativeAnalysis()
         try await scrollToTop(playlist)
         var seenRows = Set<Int>()
         var emptyScrolls = 0
@@ -586,7 +582,7 @@ final class Watcher {
     // Analyze the whole playlist in one Rekordbox command only when OCR has
     // identified every row and every track needs the same fields. This avoids
     // changing a completed BPM, grid, key, or cue for a mixed playlist.
-    private func uniformMissingFields(playlist: String, expectedCount: Int) async throws -> (MissingFields, Set<Int>)? {
+    private func uniformMissingFields(playlist: String, expectedCount: Int) async throws -> [(MissingFields, Set<Int>)] {
         var found: [Int: TrackRow] = [:]
         var completed = Set<Int>()
         for pass in 0..<3 where found.count < expectedCount && !paused {
@@ -628,47 +624,97 @@ final class Watcher {
                 record(row, phase: .failed, detail: "Preflight could not identify this row; no analysis will be attempted without a live match")
             }
         }
-        let missingNumbers = found.values.filter(\.missing.any).map(\.number).sorted()
-        guard found.count == expectedCount,
-              Set(found.keys) == Set(1...expectedCount),
-              missingNumbers.count >= 2,
-              let start = missingNumbers.first, let end = missingNumbers.last,
-              missingNumbers == Array(start...end),
-              let first = found[start]?.missing,
-              found.values.filter(\.missing.any).allSatisfy({ $0.missing == first }) else { return nil }
-        return (first, Set(missingNumbers))
+        guard found.count == expectedCount, Set(found.keys) == Set(1...expectedCount) else { return [] }
+        var groups: [(MissingFields, Set<Int>)] = []
+        var pending = Set<Int>()
+        var fields: MissingFields?
+        func flush() {
+            if let fields, pending.count >= 2 { groups.append((fields, pending)) }
+            pending = []
+        }
+        for number in 1...expectedCount {
+            guard let row = found[number], row.missing.any else { flush(); fields = nil; continue }
+            if fields != row.missing { flush(); fields = row.missing }
+            pending.insert(number)
+        }
+        flush()
+        return groups
+    }
+
+    private func submitBatchGroups(playlist: String, numbers: Set<Int>, count: Int, missing: MissingFields) async throws -> Set<Int> {
+        if numbers.count > 32 {
+            let sorted = numbers.sorted()
+            var submitted = Set<Int>()
+            for start in stride(from: 0, to: sorted.count, by: 32) {
+                let group = Set(sorted[start..<min(start + 32, sorted.count)])
+                if group.count == 1 { continue }
+                submitted.formUnion(try await submitBatchGroups(playlist: playlist, numbers: group, count: count, missing: missing))
+            }
+            return submitted
+        }
+        do {
+            try await analyzeBatch(playlist: playlist, numbers: numbers, count: count, missing: missing)
+            return numbers
+        } catch WatcherError.actionUnavailable {
+            guard !paused, control.isActive, control.isRunning else { throw WatcherError.actionUnavailable("batch paused") }
+            guard numbers.count >= 4 else { return [] }
+            let sorted = numbers.sorted(), middle = numbers.count / 2
+            note("Splitting a batch that Rekordbox did not enable")
+            let first = try await submitBatchGroups(playlist: playlist, numbers: Set(sorted[..<middle]), count: count, missing: missing)
+            let second = try await submitBatchGroups(playlist: playlist, numbers: Set(sorted[middle...]), count: count, missing: missing)
+            return first.union(second)
+        }
     }
 
     private func analyzeBatch(playlist: String, numbers: Set<Int>, count: Int, missing: MissingFields) async throws {
-        let original = try control.readPreferences()
-        defaults.set(try JSONEncoder().encode(original), forKey: recoveryKey)
-        defer { try? restorePendingIfNeeded() }
-        try control.configureAnalysis(missing)
+        try configure(missing)
         try await selectBatchTracks(playlist, numbers: numbers, count: count)
         do {
             try control.trackMenuAction("Import To Collection")
         } catch WatcherError.actionUnavailable {
             // Rekordbox disables Import when the selection is already in Collection.
         }
-        var importIdle = 0
-        for _ in 0..<max(90, numbers.count * 12) {
+        // Import can remain at 0% until analysis is explicitly requested.
+        // Give the menu action time to settle, then submit the native batch.
+        for _ in 0..<5 {
             if paused { throw WatcherError.actionUnavailable("scan paused") }
             try await Task.sleep(nanoseconds: 1_000_000_000)
-            importIdle = control.analysisBusy() ? 0 : importIdle + 1
-            if importIdle >= 5 { break }
         }
-        try await selectBatchTracks(playlist, numbers: numbers, count: count)
-        try control.trackMenuAction("Analyze Track")
-        try control.confirmAnalysisIfNeeded()
-        note("Rekordbox is analyzing \(numbers.count) tracks in one batch")
-        var analysisIdle = 0
-        for tick in 0..<max(300, numbers.count * 90) {
+        guard control.selectedTrackCount == numbers.count else {
+            throw WatcherError.verificationFailed("batch selection after import")
+        }
+        for attempt in 0..<3 {
+            do {
+                try nativeAnalyze(missing)
+                note("Rekordbox accepted \(numbers.count) tracks for batch analysis")
+                return
+            } catch WatcherError.actionUnavailable {
+                if attempt == 2 { throw WatcherError.actionUnavailable("batch analysis") }
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
+    }
+
+    private func waitForNativeAnalysis() async throws {
+        guard control.analysisBusy() else { return }
+        passiveAnalysisWait = true
+        defer { passiveAnalysisWait = false }
+        let deadline = Date().addingTimeInterval(1800)
+        var idle = 0
+        var lastStatus = ""
+        while Date() < deadline {
+            if paused { throw WatcherError.actionUnavailable("scan paused") }
             if !control.isRunning { throw WatcherError.noRekordbox }
-            try await Task.sleep(nanoseconds: 1_000_000_000)
-            analysisIdle = control.analysisBusy() ? 0 : analysisIdle + 1
-            if analysisIdle >= 15 && tick >= 15 { return }
+            let progress = control.analysisProgress
+            idle = progress == nil ? idle + 1 : 0
+            if idle >= 5 { return }
+            if let progress, progress != lastStatus {
+                note("Rekordbox: \(progress). You can use Rekordbox while it processes this queue.")
+                lastStatus = progress
+            }
+            try await Task.sleep(nanoseconds: 2_000_000_000)
         }
-        throw WatcherError.verificationFailed("completion of batch analysis")
+        throw WatcherError.verificationFailed("Rekordbox's analysis queue did not finish within 30 minutes")
     }
 
     private func selectBatchTracks(_ playlist: String, numbers: Set<Int>, count: Int) async throws {
@@ -683,7 +729,7 @@ final class Watcher {
         }
         try await scrollToTop(playlist)
         var selectedFirst = false
-        for _ in 0..<15 {
+        for _ in 0..<max(20, count) {
             let (captured, words) = try await snapshot()
             try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
             let layout = try TableLayout.detect(words, size: captured.frame.size)
@@ -697,7 +743,7 @@ final class Watcher {
                                local: CGPoint(x: layout.titleX + 90, y: layout.headerY + 90), lines: -7)
         }
         guard selectedFirst else { throw WatcherError.verificationFailed("first track of the batch") }
-        for _ in 0..<20 {
+        for _ in 0..<max(20, count) {
             let (captured, words) = try await snapshot()
             try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
             let layout = try TableLayout.detect(words, size: captured.frame.size)
@@ -855,7 +901,7 @@ final class Watcher {
                 // Ignore events generated by this process; physical input pauses the session.
                 guard event.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) != Int64(ProcessInfo.processInfo.processIdentifier) else { return }
                 Task { @MainActor in
-                    guard let self, self.scanning || self.libraryRunning, !self.paused else { return }
+                    guard let self, self.scanning || self.libraryRunning, !self.paused, !self.passiveAnalysisWait else { return }
                     self.logger.info("Pausing after keyboard, click, or scroll input (event type \(event.type.rawValue), source PID \(event.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) ?? -1))")
                     self.pauseForUser()
                 }
