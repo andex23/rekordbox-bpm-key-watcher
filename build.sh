@@ -7,10 +7,21 @@ STAGING_DIR="$(mktemp -d)"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 STAGED_APP="$STAGING_DIR/Rekordbox BPM Key Watcher.app"
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
-TARGET_ARCH="$(uname -m)"
-swiftc -swift-version 5 -target "${TARGET_ARCH}-apple-macosx14.0" -framework AppKit -framework Vision -framework ScreenCaptureKit -framework ApplicationServices \
-  "$SOURCE_DIR/AeroTheme.swift" "$SOURCE_DIR/Session.swift" "$SOURCE_DIR/ProgressWindow.swift" "$SOURCE_DIR/FloatingWidget.swift" "$SOURCE_DIR/Core.swift" "$SOURCE_DIR/NativeAnalysis.swift" "$SOURCE_DIR/RekordboxControl.swift" "$SOURCE_DIR/Watcher.swift" "$SOURCE_DIR/Main.swift" \
-  -o "$STAGED_APP/Contents/MacOS/RekordboxBPMKeyWatcher"
+# ARCHS="arm64 x86_64" creates the public universal download.
+TARGET_ARCHES="${ARCHS:-$(uname -m)}"
+BINARIES=()
+for TARGET_ARCH in ${=TARGET_ARCHES}; do
+  case "$TARGET_ARCH" in
+    arm64|x86_64) ;;
+    *) print -u2 "Unsupported architecture: $TARGET_ARCH"; exit 1 ;;
+  esac
+  BINARY="$STAGING_DIR/watcher-$TARGET_ARCH"
+  swiftc -swift-version 5 -target "${TARGET_ARCH}-apple-macosx14.0" -framework AppKit -framework Vision -framework ScreenCaptureKit -framework ApplicationServices \
+    "$SOURCE_DIR/AeroTheme.swift" "$SOURCE_DIR/Session.swift" "$SOURCE_DIR/ProgressWindow.swift" "$SOURCE_DIR/FloatingWidget.swift" "$SOURCE_DIR/Core.swift" "$SOURCE_DIR/NativeAnalysis.swift" "$SOURCE_DIR/RekordboxControl.swift" "$SOURCE_DIR/Watcher.swift" "$SOURCE_DIR/Main.swift" \
+    -o "$BINARY"
+  BINARIES+=("$BINARY")
+done
+lipo -create "${BINARIES[@]}" -output "$STAGED_APP/Contents/MacOS/RekordboxBPMKeyWatcher"
 cp "$SOURCE_DIR/Info.plist" "$STAGED_APP/Contents/Info.plist"
 cp "$SOURCE_DIR/Assets/AppIcon.icns" "$STAGED_APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$STAGED_APP"
