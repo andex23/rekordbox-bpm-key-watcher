@@ -16,7 +16,7 @@ Open the app from Applications. A small, draggable **BPM & Key** widget floats o
 
 ### One playlist
 
-Open an Apple Music playlist, then choose **Start analysis of open playlist** from the BPM menu. A five-second countdown gives you time to step away. Keep the Mac unlocked and Rekordbox visible. Keyboard/mouse activity in another app, including Rekordbox, pauses automation; **Pause** also saves progress. Existing work in Rekordbox can finish while the watcher is paused.
+Open an Apple Music playlist, then choose **Start analysis of open playlist** from the BPM menu. A five-second countdown gives you time to step away. Keep the Mac unlocked and Rekordbox visible. Clicks, scrolling, and keyboard input in another app, including Rekordbox, pause automation; mouse movement alone does not; **Pause** also saves progress. Existing work in Rekordbox can finish while the watcher is paused.
 
 **Check playlist** reads the rows without starting analysis. Keep Track Title, Artist, Key, BPM and track-number columns visible. Account access and analysis locks may only become known when an individual track is selected; preflight cannot certify every stream is playable.
 
@@ -36,7 +36,9 @@ Use **Resume saved library session** after an interruption. Completed tracks are
 - **BPM ✓**: every row in the current run was verified with positive BPM and a present key, with no errors (and no incomplete library jobs).
 - **BPM !**: incomplete/error. Read the individual error before retrying.
 
-The watcher uses Rekordbox's own analysis. It enables Auto Analysis while processing imports, configures only missing BPM/Grid and/or Key, disables Phrase/Vocal/Cue analysis, and saves previous settings once per session. It reopens Preferences only when the required analysis fields change. Settings are restored on a normal finish. If interrupted, recovery remains saved; **Restore previous analysis settings** restores them without starting another scan. The app does not take focus back automatically after user activity.
+The watcher uses Rekordbox's native **Analyze Track** and **Analyze Key** commands. Normal analysis does not change Preferences or enable Auto Analysis. It reads only the saved analysis-option flags to check whether the native command is compatible with preserving existing data; it never edits that settings file. Key-only work uses Analyze Key and does not reanalyze BPM/Grid. If BPM is missing but a key exists and Rekordbox's KEY option is enabled, or Phrase/Vocal/Cue analysis is enabled, the tool reports the incompatible options instead of silently overwriting data. Saved settings can be stale if they were changed in Rekordbox without being persisted; verify results before relying on the tool.
+
+A pending settings recovery from an older watcher build is restored once when resuming. New native-command runs do not create a recovery record or repeatedly open Preferences. The separate **Restore previous analysis settings** command remains for old interrupted sessions.
 
 On a normal finish it attempts to restore identifiable selected rows and bring the original visible track back into view. Exact pixel scroll position, offscreen selections and prior column sort are not restored; the table may remain in track-number order. Interrupted sessions defer restoration rather than taking control back from you.
 
@@ -101,3 +103,12 @@ and blank key to 112.00 BPM and Am at 20:37 WAT. The isolated run finished with
 one analyzed, three skipped and zero errors, restored settings, and the result
 was confirmed in a fresh Rekordbox capture. This verifies one automatic
 analysis, not completion of the remaining 151 tracks.
+
+
+### Native-command investigation and live test
+
+Read-only inspection of the installed Rekordbox bundle found the native Analyze Track/Analyze Key commands and a `rekordboxdj` URL scheme, but did not identify a callable background analysis endpoint. No executable patching, injection, audio extraction or collection-database writes were used. The implementation uses the existing application commands and reads a whitelist of analysis-option flags from its XML settings.
+
+On 2026-09-27 at 20:49 WAT, the native-command path changed track 13, Amantombazane, from 0.00 BPM and blank key to 113.00 BPM and Am. Preferences opened once before that run to restore the previous version's pending settings; they did not open while processing tracks 13 and 14. Track 14, Ama hem hem, subsequently changed from blank fields to 113.00 BPM and B (the key was independently checked in the captured playlist). This is still visible UI automation, not an invisible background service.
+
+A fresh launch at 20:54 WAT performed no Preferences recovery or settings changes. It analyzed track 15, uMoya 2.0, from 0.00 BPM and blank key to 113.00 BPM and Bm at 20:55 WAT, with one analyzed, fourteen existing complete tracks skipped, and zero errors. CoreTests, SessionTests, NativeAnalysisTests and the final signed build passed. This remains a partial playlist verification; all 156 tracks have not been completed. Partial runs now explicitly report that the playlist is incomplete.

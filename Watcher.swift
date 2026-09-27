@@ -85,13 +85,17 @@ final class Watcher {
     }
 
     private func configure(_ missing: MissingFields) throws {
-        if defaults.data(forKey: recoveryKey) == nil {
-            defaults.set(try JSONEncoder().encode(control.readPreferences()), forKey: recoveryKey)
-        }
-        if configuredFields != missing {
-            try control.configureAnalysis(missing)
-            configuredFields = missing
-        }
+        // Validate native commands without opening or changing Preferences.
+        if !missing.bpm { return }
+        _ = try NativeAnalysisProfile.read().command(for: missing)
+    }
+
+    private func nativeAnalyze(_ missing: MissingFields) throws {
+        let command = missing.bpm ? try NativeAnalysisProfile.read().command(for: missing) : "Analyze Key"
+        guard let command else { return }
+        logger.info("Native command: \(command, privacy: .public); no Preferences changes")
+        try control.trackMenuAction(command)
+        if command == "Analyze Track" { try control.confirmAnalysisIfNeeded() }
     }
 
     func stop() {
@@ -270,7 +274,7 @@ final class Watcher {
             if let expectedPlaylist, normalized(expectedPlaylist) != normalized(name) {
                 throw WatcherError.verificationFailed("open saved playlist \(expectedPlaylist) before resuming")
             }
-            if session?.playlist != name { session = SavedSession(playlist: name, total: 0, tracks: []) }
+            if session.map({ normalized($0.playlist) }) != normalized(name) { session = SavedSession(playlist: name, total: 0, tracks: []) }
             if session != nil {
                 for i in session!.tracks.indices {
                     session!.tracks[i].phase = .waiting
@@ -313,7 +317,7 @@ final class Watcher {
         }
         if paused || !control.isActive {
             paused = true
-            note("Paused. Progress saved; resume to restore settings and continue.")
+            note("Paused. Progress saved; resume to continue.")
             return
         }
         if control.isRunning {
@@ -328,7 +332,8 @@ final class Watcher {
                     }
                 }
                 if let openPlaylist { try await restoreView(openPlaylist) }
-                note("\(paused ? "Stopped" : "Done"): \(counts.analyzed) analyzed, \(counts.skipped) skipped, \(counts.errors) errors")
+                let complete = counts.total > 0 && counts.analyzed + counts.skipped == counts.total && counts.errors == 0
+                note("\(complete ? "Playlist complete" : "Scan finished; playlist incomplete"): \(counts.analyzed) analyzed, \(counts.skipped) skipped, \(counts.errors) errors")
             } catch {
                 counts.errors += 1
                 note("Finish failed: \(error.localizedDescription)")
@@ -744,7 +749,7 @@ final class Watcher {
         try control.click(windowFrame: readyCapture.frame,
                           local: CGPoint(x: readyLayout.titleX + 60, y: readyRow.y))
         do {
-            try control.trackMenuAction("Import To Collection")
+            if row.missing.bpm { try control.trackMenuAction("Import To Collection") }
         } catch WatcherError.actionUnavailable {
             // Already in Collection, or the row could not be selected. Analyze Track must prove selection.
         }
@@ -831,8 +836,7 @@ final class Watcher {
                 // explicitly invoked. Reselect it after the table has moved.
                 try control.click(windowFrame: updated.frame,
                                   local: CGPoint(x: currentLayout.titleX + 60, y: current.y))
-                try control.trackMenuAction("Analyze Track")
-                try control.confirmAnalysisIfNeeded()
+                try nativeAnalyze(current.missing)
                 analysisStarted = true
                 analysisAttempts += 1
             } catch WatcherError.actionUnavailable {
@@ -998,7 +1002,7 @@ final class Watcher {
                     let name = try await openLibraryPlaylist(label: job.label, expectedName: job.result?.playlist)
                     libraryQueue!.jobs[index].name = name
                     await scan()
-                    if session?.playlist == name {
+                    if session.map({ normalized($0.playlist) }) == normalized(name) {
                         libraryQueue!.jobs[index].result = session
                         let complete = counts.total > 0 && counts.analyzed + counts.skipped == counts.total && counts.errors == 0
                         libraryQueue!.jobs[index].state = complete ? "Complete" : "Incomplete"

@@ -99,6 +99,7 @@ final class RekordboxControl {
     }
 
     private func openPreferences() throws -> AXUIElement {
+        logger.info("Opening Preferences for explicit settings recovery or legacy analysis")
         guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         if let current = preferencesWindow() { return current }
         guard let root,
