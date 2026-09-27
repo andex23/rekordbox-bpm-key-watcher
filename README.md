@@ -74,3 +74,10 @@ or key analysis for the three previously incomplete tracks.
 Starting a scan hides Details and library reports to avoid intercepting scroll
 input. Opening Details during analysis pauses the watcher. Widget Minimize hides
 it; Close pauses and hides it; reopening the application shows it again.
+
+The installed build was then exercised live at 20:18 WAT. Both permissions
+remained active. Within three seconds of activating Rekordbox it reported
+“Apple Music search results are open. Select a playlist under Apple Music →
+Library → Playlists, then start analysis.” No analysis was attempted in the
+search view. The app was restarted in normal mode after this preflight check.
+Full playlist analysis remains unverified pending an open playlist.
