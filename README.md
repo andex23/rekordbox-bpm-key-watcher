@@ -147,6 +147,22 @@ At 21:49 WAT on 2026-09-27 the installed watcher completed Private-School Piano:
 The final run used batches of 32, 32 and 29, waited for Rekordbox's native queue,
 verified each playlist row, and restored the playlist view. Saved evidence
 contains all 156 unique row numbers, each marked complete with positive BPM
-and a nonblank key. Previously complete values matched where key text could be
-transcribed in both captures. No Preferences window opened during the final run.
+and a nonblank key. The saved report exposed three inconsistent OCR transcriptions of previously
+complete rows. Their values must not be described as an exact preservation
+comparison; they were excluded from the analysis batches. No Preferences window opened during the final run.
 This validates this playlist, not universal availability of Apple Music streams.
+
+### Verification overhead and progress display
+
+Completed visible rows are now verified together against a second independent
+capture, instead of repeating captures for every track. Clipped rows above the
+footer are excluded from OCR. The widget displays the native queue's remaining
+track count prominently and keeps the completed count visible at the end.
+Diagnostic preflight mode applies only to its initial CLI request; subsequent
+Analyze playlist clicks use normal analysis.
+
+The user then started let Abel talk: the installed app submitted two batches of
+15 and 16. Rekordbox processed that queue in roughly five minutes. The user
+changed views before the final verification pass; its full-row completion remains
+unverified. The newer page verification path builds successfully but has not yet
+completed a live pass after that view change.

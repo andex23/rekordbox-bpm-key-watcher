@@ -38,6 +38,8 @@ final class Watcher {
     private var configuredFields: MissingFields?
     private var retryIDs: Set<String>?
     private var expectedPlaylist: String?
+    private(set) var nativeQueueRemaining: Int?
+    private(set) var nativeQueueInitial = 0
     private var passiveAnalysisWait = false
     private var inputMonitor: Any?
 
@@ -399,13 +401,13 @@ final class Watcher {
         onChange?()
         var batchNumbers = Set<Int>()
         let batches: [(MissingFields, Set<Int>)]
-        let needsFullPreflight = retryIDs == nil || preflightOnly || CommandLine.arguments.contains("--preflight-only")
+        let needsFullPreflight = retryIDs == nil || preflightOnly
         if needsFullPreflight, let expectedCount, expectedCount > 0 {
             batches = try await uniformMissingFields(playlist: playlist, expectedCount: expectedCount)
         } else {
             batches = []
         }
-        if preflightOnly || CommandLine.arguments.contains("--preflight-only") {
+        if preflightOnly {
             counts.skipped = session?.tracks.filter { $0.phase == .complete }.count ?? 0
             counts.errors = session?.tracks.filter { $0.phase == .failed }.count ?? 0
             note("Preflight finished for \(playlist)")
@@ -441,6 +443,34 @@ final class Watcher {
             (captured, words) = try await snapshot()
             try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
             layout = try TableLayout.detect(words, size: captured.frame.size)
+            // Verify all already-complete rows in this viewport together. Two
+            // independent captures still have to agree on identity and values.
+            let ready = layout.rows(words).filter { row in
+                !seenRows.contains(row.number) && !row.title.isEmpty && !row.missing.any &&
+                (Double(row.bpm.replacingOccurrences(of: ",", with: ".")) ?? 0) > 0
+            }
+            if ready.count > 1 {
+                let (confirmation, confirmationWords) = try await snapshot()
+                try requireOpenPlaylist(playlist, words: confirmationWords, size: confirmation.frame.size)
+                let confirmationLayout = try TableLayout.detect(confirmationWords, size: confirmation.frame.size)
+                let confirmedRows = confirmationLayout.rows(confirmationWords)
+                var confirmed = 0
+                for row in ready {
+                    guard let match = confirmedRows.first(where: {
+                        $0.number == row.number && sameTitle($0.title, row.title) &&
+                        $0.artist == row.artist && $0.bpm == row.bpm && $0.key == row.key && !$0.missing.any
+                    }) else { continue }
+                    seenRows.insert(row.number)
+                    record(match, phase: .complete, detail: "Verified in two live captures")
+                    if batchNumbers.contains(row.number) { counts.analyzed += 1 }
+                    else { counts.skipped += 1 }
+                    confirmed += 1
+                }
+                if confirmed > 0 {
+                    note("Verified \(counts.analyzed + counts.skipped)/\(counts.total) tracks")
+                    continue
+                }
+            }
             guard let row = layout.rows(words).first(where: { !seenRows.contains($0.number) }) else {
                 let before = layout.rows(words).map(\.number)
                 try control.scroll(windowFrame: captured.frame,
@@ -698,7 +728,8 @@ final class Watcher {
     private func waitForNativeAnalysis() async throws {
         guard control.analysisBusy() else { return }
         passiveAnalysisWait = true
-        defer { passiveAnalysisWait = false }
+        defer { passiveAnalysisWait = false; nativeQueueRemaining = nil; onChange?() }
+        nativeQueueInitial = 0
         let deadline = Date().addingTimeInterval(1800)
         var idle = 0
         var lastStatus = ""
@@ -709,6 +740,11 @@ final class Watcher {
             idle = progress == nil ? idle + 1 : 0
             if idle >= 5 { return }
             if let progress, progress != lastStatus {
+                if let match = progress.range(of: "[0-9]+(?= Tracks?)", options: .regularExpression),
+                   let remaining = Int(progress[match]) {
+                    nativeQueueRemaining = remaining
+                    nativeQueueInitial = max(nativeQueueInitial, remaining)
+                }
                 note("Rekordbox: \(progress). You can use Rekordbox while it processes this queue.")
                 lastStatus = progress
             }

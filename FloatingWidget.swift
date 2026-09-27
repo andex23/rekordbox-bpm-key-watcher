@@ -71,10 +71,19 @@ final class FloatingWidget: NSObject, NSWindowDelegate {
             panel.orderFrontRegardless()
         }
         let verified = watcher.counts.analyzed + watcher.counts.skipped
-        title.stringValue = (watcher.scanning || watcher.libraryRunning) ? "\(verified)/\(watcher.counts.total) verified" : "BPM & Key · \(watcher.paused ? "Paused" : "Ready")"
-        subtitle.stringValue = watcher.displayStatus
+        if let remaining = watcher.nativeQueueRemaining {
+            title.stringValue = "\(remaining) tracks remaining"
+            subtitle.stringValue = "Rekordbox is processing the queued tracks"
+            progress.maxValue = Double(max(1, watcher.nativeQueueInitial))
+            progress.doubleValue = Double(max(0, watcher.nativeQueueInitial - remaining))
+        } else {
+            let complete = watcher.counts.total > 0 && verified == watcher.counts.total && watcher.counts.errors == 0
+            title.stringValue = complete ? "\(verified)/\(watcher.counts.total) complete" :
+                ((watcher.scanning || watcher.libraryRunning) ? "\(verified)/\(watcher.counts.total) verified" : "BPM & Key · \(watcher.paused ? "Paused" : "Ready")")
+            subtitle.stringValue = watcher.displayStatus
+            progress.maxValue = Double(max(1, watcher.counts.total)); progress.doubleValue = Double(verified)
+        }
         subtitle.toolTip = watcher.displayStatus
-        progress.maxValue = Double(max(1, watcher.counts.total)); progress.doubleValue = Double(verified)
         run.title = (watcher.scanning || watcher.libraryRunning) ? "Pause" : "Analyze playlist"
     }
     func show() {

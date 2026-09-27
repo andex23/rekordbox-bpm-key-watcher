@@ -112,7 +112,7 @@ struct TableLayout {
         }
         let rating = sameLine.first { $0.text.hasPrefix("Ratin") && $0.x > bpm.x }
         let nextPanel = words.filter { $0.y > title.y + 70 && $0.x > size.width * 0.18 && ($0.text.hasPrefix("Playlists (") || $0.text == "Tree View") }.map(\.y).min()
-        let bottom = min(nextPanel ?? size.height * 0.93, size.height * 0.93)
+        let bottom = min(nextPanel.map { $0 - 30 } ?? size.height * 0.91, size.height * 0.93)
         return TableLayout(numberX: numberX, titleX: title.rect.minX, artistX: artist.rect.minX,
                            keyX: keyX, keyEndX: genre?.rect.minX ?? (keyX + 140),
                            bpmX: bpm.rect.minX, bpmEndX: rating?.rect.minX ?? min(size.width - 10, bpm.rect.minX + 90),

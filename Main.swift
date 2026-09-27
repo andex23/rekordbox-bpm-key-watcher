@@ -35,7 +35,7 @@ final class MenuApp: NSObject, NSApplicationDelegate {
                           let track = self.watcher.session?.tracks.first(where: { $0.number == number }) else { return }
                     self.startScan(resume: true, retryIDs: [track.id])
                 } else {
-                    self.startScan()
+                    self.startScan(preflight: CommandLine.arguments.contains("--preflight-only"))
                 }
             }
         }
