@@ -124,6 +124,11 @@ final class Watcher {
             if paused { throw WatcherError.actionUnavailable("session paused") }
             do {
                 let captured = try await reader.capture()
+                    if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--debug-capture=") }),
+                       let data = NSBitmapImageRep(cgImage: captured.image).representation(using: .png, properties: [:]) {
+                        let path = String(argument.dropFirst("--debug-capture=".count))
+                        try? data.write(to: URL(fileURLWithPath: path))
+                    }
                 let words = try reader.recognize(captured)
                 let playlistFound = activePlaylistName(words, size: captured.frame.size) != nil
                 let tableFound = (try? TableLayout.detect(words, size: captured.frame.size)) != nil
@@ -140,11 +145,7 @@ final class Watcher {
                         $0.text.localizedCaseInsensitiveContains("key") || $0.text.localizedCaseInsensitiveContains("preview")
                     }.prefix(20).map { "\($0.text)@\(Int($0.x)),\(Int($0.y))" }.joined(separator: "; ")
                     logger.info("OCR layout: playlist \(playlistFound), table \(tableFound), \(words.count) words, frame \(Int(captured.frame.width))x\(Int(captured.frame.height)), image \(captured.image.width)x\(captured.image.height), clues \(clues, privacy: .public)")
-                    if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--debug-capture=") }),
-                       let data = NSBitmapImageRep(cgImage: captured.image).representation(using: .png, properties: [:]) {
-                        let path = String(argument.dropFirst("--debug-capture=".count))
-                        try? data.write(to: URL(fileURLWithPath: path))
-                    }
+
                 }
                 return (captured, words)
             } catch WatcherError.appleMusicSearchOpen {
@@ -397,7 +398,8 @@ final class Watcher {
         onChange?()
         var batchNumbers = Set<Int>()
         let uniform: (MissingFields, Set<Int>)?
-        if let expectedCount, expectedCount > 0 {
+        let needsFullPreflight = preflightOnly || CommandLine.arguments.contains("--preflight-only") || CommandLine.arguments.contains("--experimental-batch")
+        if needsFullPreflight, let expectedCount, expectedCount > 0 {
             uniform = try await uniformMissingFields(playlist: playlist, expectedCount: expectedCount)
         } else {
             uniform = nil
@@ -461,6 +463,15 @@ final class Watcher {
             }) {
                 guard !liveRow.bpm.isEmpty || liveRow.importPending else {
                     unstableRows[row.number, default: 0] += 1
+                    if unstableRows[row.number, default: 0] < 3,
+                       liveRow.number == liveLayout.rows(liveWords).last?.number {
+                        // The last row can be clipped by the horizontal scrollbar.
+                        // Bring it fully into view before treating OCR as a failure.
+                        try control.scroll(windowFrame: liveCapture.frame,
+                            local: CGPoint(x: liveLayout.titleX + 90, y: liveLayout.headerY + 90), lines: -4)
+                        try await Task.sleep(nanoseconds: 200_000_000)
+                        continue
+                    }
                     if unstableRows[row.number, default: 0] >= 3 {
                         seenRows.insert(row.number)
                         counts.errors += 1
@@ -510,6 +521,7 @@ final class Watcher {
                         record(result, phase: .complete, detail: "Verified in Rekordbox")
                         consecutiveErrors = 0
                         note("Saved \(playlist) #\(row.number): BPM \(result.bpm), key \(result.key)")
+                        if CommandLine.arguments.contains("--verify-track=\(row.number)") { return }
                     } catch {
                         if paused || !control.isActive {
                             record(liveRow, phase: .paused, detail: "Resume to recheck before retrying")
@@ -548,15 +560,22 @@ final class Watcher {
     }
 
     private func scrollToTop(_ playlist: String) async throws {
-        for _ in 0..<20 {
+        var previousFirst: Int?
+        var unchanged = 0
+        for _ in 0..<500 {
             let (captured, words) = try await snapshot()
             try requireOpenPlaylist(playlist, words: words, size: captured.frame.size)
             let layout = try TableLayout.detect(words, size: captured.frame.size)
             if hasLeadingRows(words, layout: layout, playlist: playlist) { return }
+            let first = layout.rows(words).map(\.number).min()
+            unchanged = first == previousFirst ? unchanged + 1 : 0
+            previousFirst = first
+            if unchanged >= 5 { break }
             try control.scroll(windowFrame: captured.frame,
-                               local: CGPoint(x: layout.titleX + 90, y: layout.headerY + 90), lines: 7)
+                               local: CGPoint(x: layout.titleX + 90, y: layout.headerY + 90), lines: 30)
             try await Task.sleep(nanoseconds: 200_000_000)
         }
+        throw WatcherError.verificationFailed("returning to the first track in \(playlist)")
     }
 
     // Analyze the whole playlist in one Rekordbox command only when OCR has
@@ -828,10 +847,14 @@ final class Watcher {
 
     private func beginInputMonitoring() {
         guard inputMonitor == nil else { return }
-        inputMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel, .mouseMoved]) { [weak self] event in
+        inputMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
                 // Ignore events generated by this process; physical input pauses the session.
                 guard event.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) != Int64(ProcessInfo.processInfo.processIdentifier) else { return }
-                Task { @MainActor in self?.pauseForUser() }
+                Task { @MainActor in
+                    guard let self, self.scanning || self.libraryRunning, !self.paused else { return }
+                    self.logger.info("Pausing after keyboard, click, or scroll input (event type \(event.type.rawValue), source PID \(event.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) ?? -1))")
+                    self.pauseForUser()
+                }
             }
     }
 

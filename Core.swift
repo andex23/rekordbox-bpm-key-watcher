@@ -269,27 +269,35 @@ final class WindowReader {
         // The playlist and track table live in the lower half; recognizing
         // that region alone keeps Vision oriented to the rows we need.
         let image = captured.image
-        let cropY = Int(Double(image.height) * 0.5)
-        guard let browserImage = image.cropping(to: CGRect(x: 0, y: cropY,
-                                                            width: image.width, height: image.height - cropY)) else {
-            throw WatcherError.windowHidden
-        }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
-        request.recognitionLanguages = ["en-US"]
-        try VNImageRequestHandler(cgImage: browserImage).perform([request])
         let size = captured.frame.size
         let scaleX = size.width / CGFloat(image.width)
         let scaleY = size.height / CGFloat(image.height)
-        var words: [Word] = (request.results ?? []).compactMap { result in
-            guard let match = result.topCandidates(1).first else { return nil }
-            let box = result.boundingBox
-            let rect = CGRect(x: box.minX * CGFloat(browserImage.width) * scaleX,
-                              y: (CGFloat(cropY) + (1 - box.maxY) * CGFloat(browserImage.height)) * scaleY,
-                              width: box.width * CGFloat(browserImage.width) * scaleX,
-                              height: box.height * CGFloat(browserImage.height) * scaleY)
-            return Word(text: match.string, rect: rect, confidence: match.confidence)
+        var words: [Word] = []
+        // Deck text can make Vision orient the whole crop incorrectly. Retry
+        // with the browser alone if the normal crop cannot expose the headers.
+        for fraction in [0.5, 0.6] {
+            let cropY = Int(Double(image.height) * fraction)
+            guard let browserImage = image.cropping(to: CGRect(x: 0, y: cropY,
+                width: image.width, height: image.height - cropY)) else { continue }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = false
+            request.recognitionLanguages = ["en-US"]
+            try VNImageRequestHandler(cgImage: browserImage).perform([request])
+            let candidate: [Word] = (request.results ?? []).compactMap { result in
+                guard let match = result.topCandidates(1).first else { return nil }
+                let box = result.boundingBox
+                let rect = CGRect(x: box.minX * CGFloat(browserImage.width) * scaleX,
+                    y: (CGFloat(cropY) + (1 - box.maxY) * CGFloat(browserImage.height)) * scaleY,
+                    width: box.width * CGFloat(browserImage.width) * scaleX,
+                    height: box.height * CGFloat(browserImage.height) * scaleY)
+                return Word(text: match.string, rect: rect, confidence: match.confidence)
+            }
+            if fraction == 0.5 { words = candidate }
+            if (try? TableLayout.detect(candidate, size: size)) != nil {
+                words = candidate
+                break
+            }
         }
         // Vision occasionally omits a one-character key (for example F) in a
         // full-window pass. A lit glyph in that otherwise empty cell means the
@@ -445,7 +453,12 @@ final class WindowReader {
         guard drawn else { return false }
         var bright = 0
         for pixel in stride(from: 0, to: pixels.count, by: 4) {
-            if pixels[pixel] > 150 && pixels[pixel + 1] > 150 && pixels[pixel + 2] > 150 {
+            let r = Int(pixels[pixel]), g = Int(pixels[pixel + 1]), b = Int(pixels[pixel + 2])
+            // Played tracks use green text; selected row backgrounds are blue.
+            // A green key glyph is present even when Vision misses its letter.
+            let whiteText = r > 150 && g > 150 && b > 150
+            let greenText = g > 90 && g * 2 > r * 3 && g * 2 > b * 3
+            if whiteText || greenText {
                 bright += 1
                 if bright >= 16 { return true }
             }

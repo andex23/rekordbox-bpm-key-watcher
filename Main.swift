@@ -19,7 +19,7 @@ final class MenuApp: NSObject, NSApplicationDelegate {
         statusItem.button?.title = " BPM"
         progress = ProgressWindow(watcher: watcher)
         widget = FloatingWidget(watcher: watcher)
-        widget.onRun = { [weak self] in guard let self else { return }; self.startScan(resume: self.watcher.session != nil) }
+        widget.onRun = { [weak self] in guard let self else { return }; self.startScan() }
         widget.onDetails = { [weak self] in self?.progress.present() }
         progress.onPermissions = { [weak self] in self?.grantPermissions() }
         progress.onAll = { [weak self] in self?.startLibrary() }
@@ -29,7 +29,15 @@ final class MenuApp: NSObject, NSApplicationDelegate {
         watcher.onChange = { [weak self] in self?.updateMenu() }
         updateMenu()
         if CommandLine.arguments.contains("--scan-open-playlist") {
-            Task { @MainActor in self.startScan() }
+            Task { @MainActor in
+                if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--verify-track=") }) {
+                    guard let number = Int(arg.dropFirst("--verify-track=".count)),
+                          let track = self.watcher.session?.tracks.first(where: { $0.number == number }) else { return }
+                    self.startScan(resume: true, retryIDs: [track.id])
+                } else {
+                    self.startScan()
+                }
+            }
         }
     }
 

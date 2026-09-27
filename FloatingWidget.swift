@@ -75,7 +75,7 @@ final class FloatingWidget: NSObject, NSWindowDelegate {
         subtitle.stringValue = watcher.displayStatus
         subtitle.toolTip = watcher.displayStatus
         progress.maxValue = Double(max(1, watcher.counts.total)); progress.doubleValue = Double(verified)
-        run.title = (watcher.scanning || watcher.libraryRunning) ? "Pause" : (watcher.session == nil ? "Start analysis" : "Resume")
+        run.title = (watcher.scanning || watcher.libraryRunning) ? "Pause" : "Analyze playlist"
     }
     func show() {
         enabled = true

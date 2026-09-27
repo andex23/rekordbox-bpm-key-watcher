@@ -81,3 +81,23 @@ remained active. Within three seconds of activating Rekordbox it reported
 Library → Playlists, then start analysis.” No analysis was attempted in the
 search view. The app was restarted in normal mode after this preflight check.
 Full playlist analysis remains unverified pending an open playlist.
+
+### Current playlist and OCR fixes (unreleased)
+
+The widget and Details **Analyze playlist** button always analyze the currently
+open playlist. Only the explicit saved-session menu and targeted retry controls
+require the saved playlist. Normal analysis begins with visible tracks instead
+of first reading every row. **Check playlist** still reads the entire list.
+The reader retries a tighter browser crop when deck graphics cause Vision to
+miss the table. Scrolling to the top now checks actual row progress instead of
+stopping after 20 scrolls. Mouse movement alone no longer pauses analysis;
+clicks, keyboard input and scrolling still do. Green played-track key text is
+recognized as present even if its letter is missed by OCR.
+
+Live verification on 2026-09-27: Private-School Piano was read at 156/156 rows.
+Tracks 1–4 were manually analyzed by the user and are not evidence of automated
+analysis. The tool then imported and analyzed track 5, Iphupho, from 0.00 BPM
+and blank key to 112.00 BPM and Am at 20:37 WAT. The isolated run finished with
+one analyzed, three skipped and zero errors, restored settings, and the result
+was confirmed in a fresh Rekordbox capture. This verifies one automatic
+analysis, not completion of the remaining 151 tracks.

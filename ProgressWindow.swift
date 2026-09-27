@@ -44,7 +44,7 @@ final class ProgressWindow: NSWindowController, NSTableViewDataSource, NSTableVi
         bar.style = .bar
         content.addArrangedSubview(bar)
         let buttons = NSStackView()
-        for (title, action) in [("Check playlist", #selector(preflight)), ("Analyze / Resume", #selector(resume)),
+        for (title, action) in [("Check playlist", #selector(preflight)), ("Analyze playlist", #selector(analyzePlaylist)),
                                 ("Pause", #selector(pause)), ("Retry failed", #selector(retryFailed)),
                                 ("Retry selected", #selector(retrySelected)), ("Permissions…", #selector(permissions))] {
             let button = AeroButton(title: title, target: self, action: action)
@@ -154,7 +154,7 @@ final class ProgressWindow: NSWindowController, NSTableViewDataSource, NSTableVi
     }
     @objc private func allPlaylists() { onAll?() }
     @objc private func preflight() { onStart?(false, nil, true) }
-    @objc private func resume() { onStart?(watcher.session != nil, nil, false) }
+    @objc private func analyzePlaylist() { onStart?(false, nil, false) }
     @objc private func pause() { watcher.pauseForUser() }
     @objc private func retryFailed() {
         let ids = Set(rows.filter { $0.phase == .failed }.map(\.id))
