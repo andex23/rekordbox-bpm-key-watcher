@@ -139,3 +139,14 @@ bounded retries and recursive splitting of disabled selections. Rekordbox
 accepted the remaining groups of 32, 32 and 29 at 21:25–21:26 WAT. Its native
 remaining-track count then decreased from 93 while the watcher waited without
 controlling the UI. Final all-row verification is still required.
+
+### Full-playlist result
+
+At 21:49 WAT on 2026-09-27 the installed watcher completed Private-School Piano:
+**156/156 tracks verified, 93 analyzed, 63 already complete, zero errors**.
+The final run used batches of 32, 32 and 29, waited for Rekordbox's native queue,
+verified each playlist row, and restored the playlist view. Saved evidence
+contains all 156 unique row numbers, each marked complete with positive BPM
+and a nonblank key. Previously complete values matched where key text could be
+transcribed in both captures. No Preferences window opened during the final run.
+This validates this playlist, not universal availability of Apple Music streams.
