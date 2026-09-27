@@ -23,9 +23,11 @@ enum WatcherError: LocalizedError {
     case actionUnavailable(String)
     case verificationFailed(String)
     case appleMusicAccountMismatch
+    case appleMusicSearchOpen
     var errorDescription: String? {
         switch self {
         case .noRekordbox: return "Rekordbox is not running."
+        case .appleMusicSearchOpen: return "Apple Music search results are open. Select a playlist under Apple Music → Library → Playlists, then start analysis."
         case .windowHidden: return "Rekordbox must be visible to scan playlists."
         case .macLocked: return "Mac appears locked. Unlock it, keep Rekordbox visible, and start the scan again."
         case .missingLayout(let value): return "Could not identify \(value) in the Rekordbox window."
@@ -50,9 +52,20 @@ struct TrackRow {
     let y: CGFloat
     let missing: MissingFields
     let importPending: Bool
+    var artist: String = ""
+    var importPercent: Int? = nil
 }
 
 enum PlaylistList {
+    static func isAppleMusicSearch(_ words: [Word], size: CGSize) -> Bool {
+        guard let layout = try? TableLayout.detect(words, size: size) else { return false }
+        let headings = words.filter {
+            $0.rect.minX > size.width * 0.17 && $0.x < layout.titleX &&
+            $0.y < layout.headerY - 8 && $0.y > layout.headerY - 45
+        }
+        guard !headings.contains(where: { name(fromHeading: $0.text) != nil }) else { return false }
+        return headings.contains { $0.text.trimmingCharacters(in: .whitespaces) == "Apple Music" }
+    }
     static func count(fromHeading heading: String) -> Int? {
         guard let match = heading.range(of: "[0-9]+(?= Tracks?\\))", options: .regularExpression) else { return nil }
         return Int(heading[match])
@@ -207,8 +220,13 @@ struct TableLayout {
                 abs($0.y - y) < 7 && $0.x > numberX - 50 && $0.x < numberX &&
                 $0.text.range(of: "^[0-9]{1,3}%$", options: .regularExpression) != nil
             }
+            let artistEnd = words.first { $0.text == "Album" && abs($0.y - headerY) < 16 }?.rect.minX ?? keyX
+            let artist = inCell(artistX, artistEnd).map(\.text).joined(separator: " ")
+            let percent = words.first {
+                abs($0.y - y) < 7 && $0.x > numberX - 50 && $0.x < numberX && $0.text.hasSuffix("%")
+            }.flatMap { Int($0.text.dropLast()) }
             return TrackRow(number: number, title: title, bpm: bpm, key: key, y: y,
-                            missing: missing, importPending: importPending)
+                            missing: missing, importPending: importPending, artist: artist, importPercent: percent)
     }
 
     static func bpmIsMissing(_ value: String) -> Bool {

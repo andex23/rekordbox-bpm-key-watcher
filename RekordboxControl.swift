@@ -22,6 +22,12 @@ final class RekordboxControl {
         return AXUIElementCreateApplication(app.processIdentifier)
     }
 
+    var shouldStop: (() -> Bool)?
+    private func checkInteraction() throws {
+        if shouldStop?() == true { throw WatcherError.actionUnavailable("session paused; resume when ready") }
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
+    }
+
     var isRunning: Bool { app != nil }
     var isActive: Bool { app?.isActive == true }
 
@@ -77,6 +83,7 @@ final class RekordboxControl {
     }
 
     private func press(_ element: AXUIElement, label: String) throws {
+        try checkInteraction()
         guard AXUIElementPerformAction(element, kAXPressAction as CFString) == .success else {
             throw WatcherError.actionUnavailable(label)
         }
@@ -92,7 +99,7 @@ final class RekordboxControl {
     }
 
     private func openPreferences() throws -> AXUIElement {
-        guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         if let current = preferencesWindow() { return current }
         guard let root,
               let button = find(root, where: { [self] in (text($0, kAXHelpAttribute as CFString) ?? "").contains("Preferences") }) else {
@@ -160,6 +167,7 @@ final class RekordboxControl {
         try go("Track Analysis", in: window)
         try setToggle("BPM / Grid", to: missing.bpm, in: window)
         try setToggle("KEY", to: missing.key, in: window)
+        try setToggle("Disable", to: false, in: window)
         try setToggle("Phrase", to: false, in: window)
         try setToggle("Vocal", to: false, in: window)
         try go("CUE Analysis", in: window)
@@ -181,7 +189,8 @@ final class RekordboxControl {
     }
 
     func click(windowFrame: CGRect, local: CGPoint, flags: CGEventFlags = []) throws {
-        guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
+        try checkInteraction()
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         let point = CGPoint(x: windowFrame.minX + local.x, y: windowFrame.minY + local.y)
         guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
               let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
@@ -194,7 +203,8 @@ final class RekordboxControl {
     }
 
     func selectAllTracks() throws {
-        guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
+        try checkInteraction()
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
             throw WatcherError.actionUnavailable("Select All")
@@ -216,7 +226,8 @@ final class RekordboxControl {
     }
 
     func scroll(windowFrame: CGRect, local: CGPoint, lines: Int32) throws {
-        guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
+        try checkInteraction()
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         let point = CGPoint(x: windowFrame.minX + local.x, y: windowFrame.minY + local.y)
         guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0) else {
             throw WatcherError.actionUnavailable("scroll")
@@ -226,7 +237,8 @@ final class RekordboxControl {
     }
 
     func trackMenuAction(_ action: String) throws {
-        guard isActive else { throw WatcherError.actionUnavailable("away analysis because Rekordbox lost focus") }
+        try checkInteraction()
+        guard isActive else { throw WatcherError.actionUnavailable("analysis because Rekordbox lost focus") }
         guard let root, let menuBarRaw = value(root, kAXMenuBarAttribute as CFString) else {
             throw WatcherError.missingLayout("Track menu")
         }
@@ -260,6 +272,7 @@ final class RekordboxControl {
     }
 
     func confirmAnalysisIfNeeded() throws {
+        try checkInteraction()
         guard let root else { throw WatcherError.noRekordbox }
         func analysisButton() -> AXUIElement? {
             var windows: [AXUIElement] = []
@@ -279,6 +292,7 @@ final class RekordboxControl {
         // The dialog can appear after the Track menu action returns. Its OK
         // button is in a separate focused window, not the main window tree.
         for _ in 0..<10 {
+            try checkInteraction()
             guard let button = analysisButton() else {
                 Thread.sleep(forTimeInterval: 0.2)
                 continue
@@ -294,6 +308,7 @@ final class RekordboxControl {
     }
 
     private func clickCenter(of element: AXUIElement) throws {
+        try checkInteraction()
         guard let positionRaw = value(element, kAXPositionAttribute as CFString),
               let sizeRaw = value(element, kAXSizeAttribute as CFString) else {
             throw WatcherError.missingLayout("analysis OK button position")

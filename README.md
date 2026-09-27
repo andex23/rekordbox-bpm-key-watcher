@@ -12,25 +12,35 @@ Grant **Accessibility** and **Screen & System Audio Recording** to the installed
 
 ## Run
 
-Open `Rekordbox BPM Key Watcher.app`. Its vinyl-platter **BPM** menu bar item has **Grant permissions…**, **Analyze open playlist while away**, **Stop analysis**, a progress summary, and recent errors. The Finder app icon uses the same original platter design.
+Open the app from Applications. A small, draggable **BPM & Key** widget floats over Rekordbox while Rekordbox is active and visible. It hides when you switch apps. **Details…** opens the track table; the menu bar has the same controls. Nothing analyzes at launch or on a timer.
 
-The menu bar label changes to **BPM ⋯** while a scan runs, **BPM ✓** only when every track in the open playlist has been verified with BPM and key, and **BPM !** when analysis stops early or reports an error. Open the menu for the current track, elapsed time, and verified count. A track counts as analyzed only after the values appear in Rekordbox.
+### One playlist
 
-To check a run, open the menu and compare **verified/total** with the playlist track count. Success means the counts match, errors are zero, and the label is **BPM ✓**. In Rekordbox, each row should show a BPM above `0.00` and a nonblank Key. **BPM ⋯** means the scan is still running. **BPM !**, a `0%` import indicator, `0.00` BPM, or a blank Key means at least one result remains unresolved; the recent errors in the menu identify rows the watcher could not finish.
+Open an Apple Music playlist, then choose **Start analysis of open playlist** from the BPM menu. A five-second countdown gives you time to step away. Keep the Mac unlocked and Rekordbox visible. Keyboard/mouse activity in another app, including Rekordbox, pauses automation; **Pause** also saves progress. Existing work in Rekordbox can finish while the watcher is paused.
 
-Open the Apple Music playlist you want analyzed, then choose **Analyze open playlist while away** before stepping away. Nothing scans at launch or on a timer. The watcher stays on that playlist. It scrolls its track table and, if needed, sorts by track number so it can verify every row; it never opens another playlist. The table remains sorted by track number afterward. If Rekordbox loses focus, the watcher stops. **Stop analysis** also ends the session. Do not use Rekordbox during an away session. The app does not start automatically at Mac login.
+**Check playlist** reads the rows without starting analysis. Keep Track Title, Artist, Key, BPM and track-number columns visible. Account access and analysis locks may only become known when an individual track is selected; preflight cannot certify every stream is playable.
 
-Keep the Mac unlocked and Rekordbox visible for the whole session. This tool drives Rekordbox's interface, so analysis cannot continue at the macOS login screen. If macOS locks, the menu shows **BPM !** and an explicit lock error. Unlock and start a new session; completed tracks are skipped.
+The detail window shows Waiting, Importing, Analyzing, Complete, Failed and Paused states, values, attempts in the saved file, and errors. **Retry failed** or **Retry selected** rechecks live values before acting. A stalled import with no percentage progress for 60 seconds is reported and skipped. Each track gets at most two explicit analysis attempts per pass. Retry is user initiated; there is no infinite retry loop.
 
-The watcher reads the playlist, skips tracks with both values already filled, and processes the remaining tracks automatically. On the Apple Music playlist tested with Rekordbox 7.2.18, **Analyze Track** was disabled for a multi-track selection and enabled for a single track. The watcher therefore invokes Rekordbox analysis separately for each missing track and verifies the result before counting it. Processing time depends on Rekordbox downloading and analyzing each stream; the menu shows the current track and elapsed time so a stalled import is visible.
+Progress is saved atomically under `~/Library/Application Support/Rekordbox BPM Key Watcher/`. Reopening the app loads the previous session. Open that same playlist and choose **Resume saved playlist**. Saved results are historical until checked again against Rekordbox; playlist position alone never authorizes reanalysis.
 
-The tool changes Rekordbox's track-analysis toggles while processing a track. It saves the previous BPM/Grid, Key, Phrase, Vocal, Auto Analysis, and Cue Analysis settings, then restores them after each track. If interrupted, it tries to restore them when the next away session starts.
+### All Apple Music playlists
 
-When a row, menu action, or result cannot be identified confidently, it reports an error and skips further action on that row. A track counts as analyzed only after a positive BPM and filled key appear in Rekordbox's playlist. Its OCR layout expects the **Track Title**, **Artist**, **Key**, **BPM**, and track-number columns to be visible in the Apple Music playlist view. Keep those columns visible. The open playlist must have an identifiable name in the track-list heading.
+Expand **Apple Music → Library → Playlists** in the sidebar and start **Analyze all Apple Music playlists**. The tool discovers visible sidebar entries, checks the heading after opening each playlist, processes its missing values, and saves a library queue. Duplicate/ambiguous names are reported instead of guessed. Collapsed folders and unreadable labels can prevent coverage; the report describes discovered playlists, not a guarantee that the whole Apple Music library was found.
 
-If Rekordbox reports that a track is managed by a different Apple Music account, the watcher skips that row and shows the error. Rekordbox will not analyze that track until the Apple Music account in Rekordbox can access it.
+Use **Resume saved library session** after an interruption. Completed tracks are checked and skipped even if they appear in another playlist. **Library progress / skipped playlists…** lists each playlist and any discovery errors; **Saved playlist results…** lets you view a saved playlist's results. This mode changes the visible playlist while running and attempts to return to the original playlist afterward.
 
-Import may leave an Apple Music row at `0%` without filling its fields. The watcher then selects **Track → Analyze Track**, confirms the analysis settings, and waits for Rekordbox to write the result into the playlist. A single-letter key that Vision fails to transcribe is still treated as filled when the key cell visibly contains text, avoiding repeat analysis of completed tracks.
+### Completion and recovery
+
+- **BPM ⋯**: working; inspect Details for progress.
+- **BPM ✓**: every row in the current run was verified with positive BPM and a present key, with no errors (and no incomplete library jobs).
+- **BPM !**: incomplete/error. Read the individual error before retrying.
+
+The watcher uses Rekordbox's own analysis. It enables Auto Analysis while processing imports, configures only missing BPM/Grid and/or Key, disables Phrase/Vocal/Cue analysis, and saves previous settings once per session. It reopens Preferences only when the required analysis fields change. Settings are restored on a normal finish. If interrupted, recovery remains saved; **Restore previous analysis settings** restores them without starting another scan. The app does not take focus back automatically after user activity.
+
+On a normal finish it attempts to restore identifiable selected rows and bring the original visible track back into view. Exact pixel scroll position, offscreen selections and prior column sort are not restored; the table may remain in track-number order. Interrupted sessions defer restoration rather than taking control back from you.
+
+Rekordbox's [streaming guide](https://cdn.rekordbox.com/files/20260127164936/rekordbox7.2.10_streaming_service_usage_guide_EN.pdf) specifies importing streaming tracks one at a time and supports Auto Analysis after import. The tool still operates Rekordbox's interface. There is no verified invisible/background integration in this build. It does not write the Rekordbox database or extract Apple Music audio.
 
 ## Build and test
 
@@ -40,6 +50,8 @@ Command Line Tools with Swift 6.2 or newer are sufficient; Xcode is not required
 ./build.sh
 swiftc -swift-version 5 Core.swift Tests/CoreTests.swift -o /tmp/rekordbox-watcher-core-tests
 /tmp/rekordbox-watcher-core-tests
+swiftc -swift-version 5 Session.swift Tests/SessionTests.swift -o /tmp/rekordbox-session-tests
+/tmp/rekordbox-session-tests
 ```
 
 The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The observed interface was Rekordbox 7.2.18 on macOS 26.6.2. A live scan identified all 31 rows in one already completed Apple Music playlist and skipped them with zero errors. In a 35-track playlist, 32 rows ultimately showed BPM and key after automated analysis or targeted retries; three rows remained unresolved, including streams that stayed at `0%`. Treat this release as experimental and check its results in Rekordbox before a set.
@@ -47,3 +59,18 @@ The app uses macOS AppKit, Accessibility, ScreenCaptureKit, and Vision. The obse
 Rekordbox has no documented background analysis API for Apple Music tracks, so its analysis controls briefly appear while the away session runs. Menu placement and OCR may need adjustment after a Rekordbox UI update. Complete coverage of a playlist requires each Apple Music stream to be available to Rekordbox for analysis. Tracks that Rekordbox cannot access or has locked against analysis cannot be filled by this tool.
 
 This project is independent and is not affiliated with AlphaTheta, Pioneer DJ, Apple, or Rekordbox. Released under the [MIT License](LICENSE).
+
+### Playlist selection diagnostic fix (unreleased)
+
+On 2026-09-27 a fresh capture showed Apple Music search results with the generic
+`Apple Music` heading, not an open playlist. This revision detects that state
+across three frames and asks for a playlist immediately, instead of displaying
+“Waiting for Rekordbox playlist to redraw” for the entire retry interval.
+The classifier passed both synthetic regression tests and replay of the actual
+captured failure. CoreTests, SessionTests, the native build and signature checks
+passed. This verifies the diagnostic fix; it does not establish successful BPM
+or key analysis for the three previously incomplete tracks.
+
+Starting a scan hides Details and library reports to avoid intercepting scroll
+input. Opening Details during analysis pauses the watcher. Widget Minimize hides
+it; Close pauses and hides it; reopening the application shows it again.

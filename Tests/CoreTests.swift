@@ -107,6 +107,17 @@ struct CoreTests {
         assert(PlaylistList.count(fromHeading: "Example Playlist (31 Tracks)") == 31)
         assert(PlaylistList.count(fromHeading: "Zions playlist 1 (0 Track)") == 0)
         assert(PlaylistList.name(fromHeading: "Collection") == nil)
+        // The sidebar footer is not the active playlist. Search results have
+        // a plain Apple Music heading immediately above the track columns.
+        let searchWords = [word("Apple Music", 270, 505), word("#", 330, 535),
+            word("Track Title", 660, 535), word("Artist", 790, 535),
+            word("Key", 1050, 535), word("BPM", 1300, 535),
+            word("Playlists (65 Tracks)", 270, 740)]
+        let searchSize = CGSize(width: 1440, height: 789)
+        assert(PlaylistList.isAppleMusicSearch(searchWords, size: searchSize))
+        assert(!PlaylistList.isAppleMusicSearch(searchWords.filter { $0.text != "Apple Music" } +
+            [word("Apple Music (35 Tracks)", 270, 505)], size: searchSize))
+        assert(!PlaylistList.isAppleMusicSearch([], size: searchSize))
         print("CoreTests passed")
     }
 }
